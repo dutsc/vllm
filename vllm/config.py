@@ -2561,6 +2561,12 @@ class KVTransferConfig(BaseModel):
 
     # The KV connector port, used to build distributed connection
     kv_port: int = 14579
+    
+    # pd_sc
+    zmq_ip: int = "127.0.0.1"
+    zmq_ports: List[int] = range(12300,12310,1)
+    producer_num: int
+    consumer_num: int
 
     def compute_hash(self) -> str:
         """
@@ -2620,6 +2626,7 @@ class KVTransferConfig(BaseModel):
     def is_kv_consumer(self) -> bool:
         return self.kv_connector is not None and \
             self.kv_role in ["kv_consumer", "kv_both"]
+            
 
 
 class CompilationLevel:

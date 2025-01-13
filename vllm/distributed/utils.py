@@ -127,6 +127,7 @@ class StatelessProcessGroup:
         """Send an object to a destination rank."""
         self.expire_data()
         key = f"send_to/{dst}/{self.send_dst_counter[dst]}"
+        logger.info(f"[rank:{self.rank}] key={key}")
         self.store.set(key, pickle.dumps(obj))
         self.send_dst_counter[dst] += 1
         self.entries.append((key, time.time()))
@@ -144,9 +145,10 @@ class StatelessProcessGroup:
 
     def recv_obj(self, src: int) -> Any:
         """Receive an object from a source rank."""
+        key = f"send_to/{self.rank}/{self.recv_src_counter[src]}"
+        logger.info(f"[rank:{self.rank}] recv_obj key={key}")
         obj = pickle.loads(
-            self.store.get(
-                f"send_to/{self.rank}/{self.recv_src_counter[src]}"))
+            self.store.get(key))
         self.recv_src_counter[src] += 1
         return obj
 

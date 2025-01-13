@@ -343,7 +343,7 @@ class OpenAIServing:
         )
 
         engine_prompts = [
-            TokensPrompt(prompt_token_ids=request_prompt["prompt_token_ids"])
+            TokensPrompt(prompt_token_ids=request_prompt["prompt_token_ids"], pd_pair=request.pd_pair) # sc_pd
             for request_prompt in request_prompts
         ]
 

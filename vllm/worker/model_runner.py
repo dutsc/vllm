@@ -149,6 +149,7 @@ class ModelInputForGPUWithSamplingMetadata(ModelInputForGPU):
     # Used for speculative decoding. We do not broadcast it because it is only
     # used by the driver worker.
     is_prompt: Optional[bool] = None
+    pd_pairs: Optional[List[List[int]]] = None # sc_pd
 
     def as_broadcastable_tensor_dict(self) -> Dict[str, Any]:
         tensor_dict = {
@@ -205,6 +206,7 @@ class ModelInputForGPUBuilder(ModelRunnerInputBuilderBase[ModelInputForGPU]):
             self.lora_requests.clear()  # type: ignore
             self.prompt_adapter_index_mapping.clear()  # type: ignore
             self.prompt_adapter_prompt_mapping.clear()  # type: ignore
+            self.pd_pair.clear()  # sc_pd
 
         def __init__(
             self,
@@ -255,6 +257,7 @@ class ModelInputForGPUBuilder(ModelRunnerInputBuilderBase[ModelInputForGPU]):
             reinit: bool = False,
             reinit_use_defaults: bool = False,
             encoder_seq_len: int = 0,
+            pd_pair: List[int] = [], # sc_pd
         ):
             if reinit:
                 assert len(self.seq_ids) == len(seq_ids)  # type: ignore
@@ -269,6 +272,7 @@ class ModelInputForGPUBuilder(ModelRunnerInputBuilderBase[ModelInputForGPU]):
             self.computed_block_nums = computed_block_nums
             self.n_seqs = n_seqs
             self.encoder_seq_len = encoder_seq_len
+            
 
             if reinit:
                 if len(self.seq_ids) == 1 and reinit_use_defaults:
@@ -351,6 +355,12 @@ class ModelInputForGPUBuilder(ModelRunnerInputBuilderBase[ModelInputForGPU]):
                             prompt_adapter_prompt_mapping
                     else:
                         self.prompt_adapter_prompt_mapping.clear()
+                    
+                    # sc_pd
+                    if pd_pair:
+                        self.pd_pair = pd_pair 
+                    else:
+                        self.pd_pair.clear()
 
             else:
                 self.input_tokens = input_tokens or []
@@ -372,6 +382,7 @@ class ModelInputForGPUBuilder(ModelRunnerInputBuilderBase[ModelInputForGPU]):
                     prompt_adapter_index_mapping or [])
                 self.prompt_adapter_prompt_mapping = (
                     prompt_adapter_prompt_mapping or [])
+                self.pd_pair = pd_pair or [] # sc_pd
 
             self.prompt_adapter_request = prompt_adapter_request
             self.multi_modal_kwargs = multi_modal_kwargs
@@ -398,6 +409,7 @@ class ModelInputForGPUBuilder(ModelRunnerInputBuilderBase[ModelInputForGPU]):
 
             self.lora_index_mapping = []
             self.lora_prompt_mapping = []
+            self.pd_pair = [] # sc_pd
 
     def gen_inter_data_builder(self, num_seqs: int):
         return lambda: ModelInputForGPUBuilder.InterDataForSeqGroup(
@@ -723,6 +735,7 @@ class ModelInputForGPUBuilder(ModelRunnerInputBuilderBase[ModelInputForGPU]):
         seq_ids = seq_group_metadata.seq_data.keys()
         n_seqs = len(seq_ids)
         is_prompt = seq_group_metadata.is_prompt
+        pd_pair = seq_group_metadata.pd_pair # sc_pd
 
         if is_prompt:
             assert n_seqs == 1
@@ -737,12 +750,14 @@ class ModelInputForGPUBuilder(ModelRunnerInputBuilderBase[ModelInputForGPU]):
             request_id=seq_group_metadata.request_id,
             seq_ids=seq_ids,
             is_prompt=is_prompt,
+            pd_pair=pd_pair, # sc_pd
             block_tables=seq_group_metadata.block_tables,
             computed_block_nums=seq_group_metadata.computed_block_nums,
             reinit=True,
             reinit_use_defaults=True,
             encoder_seq_len=encoder_seq_len)
 
+        inter_data.pd_pair = pd_pair # sc_pd
         self.inter_data_list.append(inter_data)
 
         for seq_idx in range(n_seqs):
@@ -850,11 +865,13 @@ class ModelInputForGPUBuilder(ModelRunnerInputBuilderBase[ModelInputForGPU]):
                     input_positions.extend(cur_input_positions)
 
         seq_lens = []
+        pd_pairs = [] # sc_pd
         query_lens = []
         max_decode_seq_len = 0
         max_encoder_seq_len = 0
         for inter_data in self.inter_data_list:
             seq_lens.extend(inter_data.seq_lens)
+            pd_pairs.append(inter_data.pd_pair) # sc_pd
             query_lens.extend(inter_data.query_lens)
             if not inter_data.is_prompt:
                 max_decode_seq_len = max(max_decode_seq_len,
@@ -976,6 +993,7 @@ class ModelInputForGPUBuilder(ModelRunnerInputBuilderBase[ModelInputForGPU]):
             token_types=token_types_tensor,
             attn_metadata=attn_metadata,
             seq_lens=seq_lens,
+            pd_pairs=pd_pairs, # sc_pd
             query_lens=query_lens,
             lora_mapping=lora_mapping,
             lora_requests=lora_requests,
@@ -1631,6 +1649,10 @@ class ModelRunner(GPUModelRunnerBase[ModelInputForGPUWithSamplingMetadata]):
         intermediate_tensors: Optional[IntermediateTensors] = None,
         num_steps: int = 1,
     ) -> Optional[Union[List[SamplerOutput], IntermediateTensors]]:
+        pd_pairs = model_input.pd_pairs
+        kv_rank = get_kv_transfer_group().config.kv_transfer_config.kv_rank
+        logger.info(f'[kv_rank:{kv_rank}] pd_pairs={pd_pairs}')
+        # logger.info(f"pd_pairs = {pd_pairs}")
         if num_steps > 1:
             raise ValueError("num_steps > 1 is not supported in ModelRunner")
 
@@ -1679,7 +1701,8 @@ class ModelRunner(GPUModelRunnerBase[ModelInputForGPUWithSamplingMetadata]):
                     # layers.
                     model_executable,
                     model_input,
-                    kv_caches=kv_caches
+                    kv_caches=kv_caches,
+                    pd_pairs=pd_pairs, # sc_pd
                 )
 
         multi_modal_kwargs = model_input.multi_modal_kwargs or {}
@@ -1713,6 +1736,7 @@ class ModelRunner(GPUModelRunnerBase[ModelInputForGPUWithSamplingMetadata]):
         # Sending KV cache in distributed KV cache transfer setting
         # NOTE: the send operation is non-blocking
         if self.need_send_kv(model_input, kv_caches):
+            logger.info(f"[kv_rank:{kv_rank}] need_send_kv")
             get_kv_transfer_group().send_kv_caches_and_hidden_states(
                 # model_executable is used to know which layer the current
                 # worker is working on, so that we can send KV for only those
@@ -1721,6 +1745,7 @@ class ModelRunner(GPUModelRunnerBase[ModelInputForGPUWithSamplingMetadata]):
                 model_input,
                 kv_caches,
                 hidden_or_intermediate_states,
+                pd_pairs=pd_pairs, # sc_pd
             )
 
         # Compute the logits in the last pipeline stage.

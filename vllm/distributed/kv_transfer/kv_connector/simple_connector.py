@@ -130,20 +130,24 @@ class SimpleConnector(KVConnectorBase):
             )
 
     def select(self, input_tokens: Optional[torch.Tensor],
-               roi: Optional[torch.Tensor]) -> List[Optional[torch.Tensor]]:
+               roi: Optional[torch.Tensor],
+               pd_pair: int) -> List[Optional[torch.Tensor]]:
 
         assert self.consumer_buffer is not None, "Please initialize the "\
             "consumer buffer before calling select."
-        return self.consumer_buffer.drop_select(input_tokens, roi)
+        # return self.consumer_buffer.drop_select(input_tokens, roi, pd_pair)
+        return self.consumer_buffer.drop_select_zmq(input_tokens, roi, pd_pair)
 
     def insert(self, input_tokens: torch.Tensor, roi: torch.Tensor,
                key: torch.Tensor, value: torch.Tensor,
-               hidden: torch.Tensor) -> None:
+               hidden: torch.Tensor, pd_pair: int) -> None:
 
         assert self.producer_buffer is not None, "Please initialize the "\
             "producer buffer before calling insert."
 
-        self.producer_buffer.insert(input_tokens, roi, key, value, hidden)
+        # self.producer_buffer.insert(input_tokens, roi, key, value, hidden, pd_pair)
+        self.producer_buffer.insert_zmq(input_tokens, roi, key, value, hidden, pd_pair)
+
 
     def send_kv_caches_and_hidden_states(
         self,
@@ -152,6 +156,7 @@ class SimpleConnector(KVConnectorBase):
         kv_caches: List[torch.Tensor],
         hidden_or_intermediate_states: Union[torch.Tensor,
                                              IntermediateTensors],
+        pd_pairs: List[List[int]], # sc_pd
     ) -> None:
 
         input_tokens_tensor = model_input.input_tokens
@@ -170,6 +175,8 @@ class SimpleConnector(KVConnectorBase):
         # so we will send them to decode instance
         # FIXME(Kuntai): This assume that all requests are prefill.
         for idx, slen in enumerate(seq_lens):
+            pd_pair = pd_pairs[idx] 
+            d_rank = pd_pair[1] 
             start_pos = sum(seq_lens[:idx])
             end_pos = start_pos + slen
             current_tokens = input_tokens_tensor[start_pos:end_pos]
@@ -193,14 +200,16 @@ class SimpleConnector(KVConnectorBase):
             self.insert(current_tokens,
                         torch.ones_like(current_tokens,
                                         dtype=bool), keys, values,
-                        hidden_or_intermediate_states[start_pos:end_pos])
+                        hidden_or_intermediate_states[start_pos:end_pos],
+                        pd_pair)
 
         logger.debug("[rank%d]: KV send DONE.", torch.distributed.get_rank())
 
     def recv_kv_caches_and_hidden_states(
         self, model_executable: torch.nn.Module,
         model_input: "ModelInputForGPUWithSamplingMetadata",
-        kv_caches: List[torch.Tensor]
+        kv_caches: List[torch.Tensor],
+        pd_pairs: List[List[int]], # sc_pd
     ) -> Tuple[Union[torch.Tensor, IntermediateTensors], bool,
                "ModelInputForGPUWithSamplingMetadata"]:
 
@@ -223,7 +232,8 @@ class SimpleConnector(KVConnectorBase):
         # enumerate different requests
         # FIXME(Kuntai): This impl assumes that all requests are prefill.
         for idx, slen in enumerate(seq_lens):
-
+            pd_pair = pd_pairs[idx]
+            p_rank = pd_pair[0]
             start_pos = sum(seq_lens[:idx])
             end_pos = start_pos + slen
             current_tokens = input_tokens_tensor[start_pos:end_pos]
@@ -234,7 +244,8 @@ class SimpleConnector(KVConnectorBase):
             start_pos_list.append(start_pos)
 
             ret = self.select(current_tokens,
-                              torch.ones_like(current_tokens, dtype=bool))
+                              torch.ones_like(current_tokens, dtype=bool),
+                              pd_pair)
             if ret[0] is None:
                 # didn't find any match.
                 bypass_model_exec = False

@@ -1314,6 +1314,7 @@ class Scheduler:
             seq_data: Dict[int, SequenceData] = {}
             # seq_id -> physical block numbers
             block_tables: Dict[int, List[int]] = {}
+            # pd_pair: List[int] = [] # sc_pd
 
             if seq_group.is_encoder_decoder():
                 # Encoder associated with SequenceGroup
@@ -1333,6 +1334,8 @@ class Scheduler:
                 seq_data[seq_id] = seq.data
                 block_tables[seq_id] = self.block_manager.get_block_table(seq)
                 self.block_manager.access_all_blocks_in_seq(seq, now)
+                # print(f"seq.inputs={seq.inputs}")
+                pd_pair = seq.inputs.inputs['pd_pair'] # sc_pd
 
             if self.cache_config.enable_prefix_caching:
                 common_computed_block_nums = (
@@ -1377,6 +1380,7 @@ class Scheduler:
                     cross_block_table=cross_block_table,
                     state=seq_group.state,
                     token_type_ids=seq_group.token_type_ids,
+                    pd_pair=pd_pair, # sc_pd
                     # `multi_modal_data` will only be present for the 1st comm
                     # between engine and worker.
                     # the subsequent comms can still use delta, but
@@ -1402,6 +1406,7 @@ class Scheduler:
                     do_sample=do_sample,
                     token_chunk_size=token_chunk_size,
                     computed_block_nums=common_computed_block_nums,
+                    pd_pair=pd_pair, # sc_pd
                 )
             seq_group_metadata_list.append(seq_group_metadata)
 

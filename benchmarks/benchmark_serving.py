@@ -102,7 +102,7 @@ def sample_sharegpt_requests(
                 data["conversations"][1]["value"]) for data in dataset]
 
     # Shuffle the dataset.
-    random.shuffle(dataset)
+    # random.shuffle(dataset)
 
     # Filter out sequences that are too long or too short
     filtered_dataset: List[Tuple[str, int, int]] = []
@@ -411,7 +411,8 @@ async def get_request(
 
         # Sample the request interval from the gamma distribution.
         # If burstiness is 1, it follows exponential distribution.
-        interval = np.random.gamma(shape=burstiness, scale=theta)
+        # interval = np.random.gamma(shape=burstiness, scale=theta)
+        interval = 1 / request_rate
         # The next request will be sent after the interval.
         await asyncio.sleep(interval)
 
@@ -551,24 +552,24 @@ async def benchmark(
         # multi-modal benchmark is only available on OpenAI Chat backend.
         raise ValueError(
             "Multi-modal content is only supported on 'openai-chat' backend.")
-    test_input = RequestFuncInput(
-        model=model_id,
-        prompt=test_prompt,
-        api_url=api_url,
-        prompt_len=test_prompt_len,
-        output_len=test_output_len,
-        logprobs=logprobs,
-        best_of=best_of,
-        multi_modal_content=test_mm_content,
-        ignore_eos=ignore_eos,
-    )
-    test_output = await request_func(request_func_input=test_input)
-    if not test_output.success:
-        raise ValueError(
-            "Initial test run failed - Please make sure benchmark arguments "
-            f"are correctly specified. Error: {test_output.error}")
-    else:
-        print("Initial test run completed. Starting main benchmark run...")
+    # test_input = RequestFuncInput(
+    #     model=model_id,
+    #     prompt=test_prompt,
+    #     api_url=api_url,
+    #     prompt_len=test_prompt_len,
+    #     output_len=test_output_len,
+    #     logprobs=logprobs,
+    #     best_of=best_of,
+    #     multi_modal_content=test_mm_content,
+    #     ignore_eos=ignore_eos,
+    # )
+    # test_output = await request_func(request_func_input=test_input)
+    # if not test_output.success:
+    #     raise ValueError(
+    #         "Initial test run failed - Please make sure benchmark arguments "
+    #         f"are correctly specified. Error: {test_output.error}")
+    # else:
+    #     print("Initial test run completed. Starting main benchmark run...")
 
     if profile:
         print("Starting profiler...")

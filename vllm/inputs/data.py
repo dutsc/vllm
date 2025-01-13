@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 class TextPrompt(TypedDict):
     """Schema for a text prompt."""
-
+    
     prompt: str
     """The input text to be tokenized before passing to the model."""
 
@@ -35,6 +35,7 @@ class TextPrompt(TypedDict):
 
 class TokensPrompt(TypedDict):
     """Schema for a tokenized prompt."""
+    pd_pair: List[int] # sc_pd
 
     prompt_token_ids: List[int]
     """A list of token IDs to pass to the model."""
@@ -130,6 +131,7 @@ both decoder-only and encoder/decoder input types:
 
 class TokenInputs(TypedDict):
     """Represents token-based inputs."""
+    pd_pair: List[int] # sc_pd
 
     type: Literal["token"]
     """The type of inputs."""
