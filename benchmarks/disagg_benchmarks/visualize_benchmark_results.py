@@ -6,8 +6,9 @@ import pandas as pd
 if __name__ == "__main__":
 
     data = []
-    for name in ['disagg_prefill', 'chunked_prefill']:
-        for qps in [2, 4, 6, 8]:
+    # for name in ['disagg_prefill', 'chunked_prefill']:
+    for name in ['sharegpt']:
+        for qps in [5,6,20]:
             with open(f"results/{name}-qps-{qps}.json") as f:
                 x = json.load(f)
                 x['name'] = name
@@ -15,8 +16,8 @@ if __name__ == "__main__":
                 data.append(x)
 
     df = pd.DataFrame.from_dict(data)
-    dis_df = df[df['name'] == 'disagg_prefill']
-    chu_df = df[df['name'] == 'chunked_prefill']
+    dis_df = df[df['name'] == 'sharegpt']
+    # chu_df = df[df['name'] == 'chunked_prefill']
 
     plt.style.use('bmh')
     plt.rcParams['font.size'] = 20
@@ -29,14 +30,15 @@ if __name__ == "__main__":
         fig, ax = plt.subplots(figsize=(11, 7))
         plt.plot(dis_df['qps'],
                  dis_df[key],
-                 label='disagg_prefill',
+                #  label='disagg_prefill',
+                 label='sharegpt',
                  marker='o',
                  linewidth=4)
-        plt.plot(chu_df['qps'],
-                 chu_df[key],
-                 label='chunked_prefill',
-                 marker='o',
-                 linewidth=4)
+        # plt.plot(chu_df['qps'],
+        #          chu_df[key],
+        #          label='chunked_prefill',
+        #          marker='o',
+        #          linewidth=4)
         ax.legend()
 
         ax.set_xlabel('QPS')

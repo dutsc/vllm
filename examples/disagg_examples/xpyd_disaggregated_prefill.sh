@@ -40,26 +40,42 @@ wait_for_server() {
 
 
 # You can also adjust --kv-ip and --kv-port for distributed inference.
-
+MODEL_PATH="/share/models/Meta-Llama-3-8B-Instruct"
 # prefilling instance, which is the KV producer
-CUDA_VISIBLE_DEVICES=0 vllm serve meta-llama/Meta-Llama-3.1-8B-Instruct \
-    --port 8100 \
-    --max-model-len 100 \
+CUDA_VISIBLE_DEVICES=0 vllm serve $MODEL_PATH \
+    --port 8101 \
+    --max-model-len 4096 \
     --gpu-memory-utilization 0.8 \
     --kv-transfer-config \
-    '{"kv_connector":"PyNcclConnector","kv_role":"kv_producer","kv_rank":0,"kv_parallel_size":2}' &
+    '{"kv_connector":"PyNcclConnector","kv_role":"kv_producer","kv_rank":0,"kv_parallel_size":4,"producer_num":1,"consumer_num":3}' &
 
 # decoding instance, which is the KV consumer
-CUDA_VISIBLE_DEVICES=1 vllm serve meta-llama/Meta-Llama-3.1-8B-Instruct \
-    --port 8200 \
-    --max-model-len 100 \
+CUDA_VISIBLE_DEVICES=1 vllm serve $MODEL_PATH \
+    --port 8201 \
+    --max-model-len 4096 \
     --gpu-memory-utilization 0.8 \
     --kv-transfer-config \
-    '{"kv_connector":"PyNcclConnector","kv_role":"kv_consumer","kv_rank":1,"kv_parallel_size":2}' &
+    '{"kv_connector":"PyNcclConnector","kv_role":"kv_consumer","kv_rank":1,"kv_parallel_size":4,"producer_num":1,"consumer_num":3}' &
+
+CUDA_VISIBLE_DEVICES=4 vllm serve $MODEL_PATH \
+    --port 8202 \
+    --max-model-len 4096 \
+    --gpu-memory-utilization 0.8 \
+    --kv-transfer-config \
+    '{"kv_connector":"PyNcclConnector","kv_role":"kv_consumer","kv_rank":2,"kv_parallel_size":4,"producer_num":1,"consumer_num":3}' &
+
+CUDA_VISIBLE_DEVICES=5 vllm serve $MODEL_PATH \
+    --port 8203 \
+    --max-model-len 4096 \
+    --gpu-memory-utilization 0.8 \
+    --kv-transfer-config \
+    '{"kv_connector":"PyNcclConnector","kv_role":"kv_consumer","kv_rank":3,"kv_parallel_size":4,"producer_num":1,"consumer_num":3}' &
 
 # wait until prefill and decode instances are ready
-wait_for_server 8100
-wait_for_server 8200
+wait_for_server 8101
+wait_for_server 8201
+# wait_for_server 8202
+# wait_for_server 8203
 
 # launch a proxy server that opens the service at port 8000
 # the workflow of this proxy:
@@ -69,41 +85,7 @@ wait_for_server 8200
 #   instance
 # NOTE: the usage of this API is subject to change --- in the future we will 
 # introduce "vllm connect" to connect between prefill and decode instances
-python3 ../benchmarks/disagg_benchmarks/disagg_prefill_proxy_server.py &
+python3 ../../benchmarks/disagg_benchmarks/xpyd_disagg_prefill_proxy_server.py &
 sleep 1
 
-# serve two example requests
-output1=$(curl -X POST -s http://localhost:8000/v1/completions \
--H "Content-Type: application/json" \
--d '{
-"model": "meta-llama/Meta-Llama-3.1-8B-Instruct",
-"prompt": "San Francisco is a",
-"max_tokens": 10,
-"temperature": 0
-}')
 
-output2=$(curl -X POST -s http://localhost:8000/v1/completions \
--H "Content-Type: application/json" \
--d '{
-"model": "meta-llama/Meta-Llama-3.1-8B-Instruct",
-"prompt": "Santa Clara is a",
-"max_tokens": 10,
-"temperature": 0
-}')
-
-
-# Cleanup commands
-pgrep python | xargs kill -9
-pkill -f python
-
-echo ""
-
-sleep 1
-
-# Print the outputs of the curl requests
-echo ""
-echo "Output of first request: $output1"
-echo "Output of second request: $output2"
-
-echo "🎉🎉 Successfully finished 2 test requests! 🎉🎉"
-echo ""

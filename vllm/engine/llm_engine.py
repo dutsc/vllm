@@ -786,6 +786,7 @@ class LLMEngine:
             prompt_adapter_request=prompt_adapter_request,
         )
         processed_inputs = self.input_processor(preprocessed_inputs)
+        processed_inputs['pd_pair'] = prompt['pd_pair'] # sc_pd
 
         self._add_processed_request(
             request_id=request_id,

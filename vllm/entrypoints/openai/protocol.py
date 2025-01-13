@@ -617,6 +617,9 @@ class ChatCompletionRequest(OpenAIBaseModel):
 class CompletionRequest(OpenAIBaseModel):
     # Ordered by official OpenAI API documentation
     # https://platform.openai.com/docs/api-reference/completions/create
+    
+    # sc_pd
+    pd_pair: List[int]
     model: str
     prompt: Union[List[int], List[List[int]], str, List[str]]
     best_of: Optional[int] = None

@@ -44,9 +44,10 @@ class KVTransferAgent:
 
         assert self.config.kv_transfer_config.is_kv_transfer_instance, "KV"\
             "TransferAgent should only be used when kv_connector is set."
-
+        logger.info(f"[kv_rank:{self.config.kv_transfer_config.kv_rank}] init connector")
         self.connector = KVConnectorFactory.create_connector(
             rank, local_rank, config)
+            
 
     def send_kv_caches_and_hidden_states(
         self,
@@ -55,11 +56,12 @@ class KVTransferAgent:
         kv_caches: List[torch.Tensor],
         hidden_or_intermediate_states: Union[torch.Tensor,
                                              IntermediateTensors],
+        pd_pairs: List[List[int]], # sc_pd
     ) -> None:
 
         self.connector.send_kv_caches_and_hidden_states(
             model_executable, model_input, kv_caches,
-            hidden_or_intermediate_states)
+            hidden_or_intermediate_states, pd_pairs)
 
     def close(self) -> None:
         self.connector.close()
@@ -67,9 +69,10 @@ class KVTransferAgent:
     def recv_kv_caches_and_hidden_states(
         self, model_executable: torch.nn.Module,
         model_input: "ModelInputForGPUWithSamplingMetadata",
-        kv_caches: List[torch.Tensor]
+        kv_caches: List[torch.Tensor],
+        pd_pairs: List[List[int]], # sc_pd
     ) -> Tuple[Union[torch.Tensor, IntermediateTensors], bool,
                "ModelInputForGPUWithSamplingMetadata"]:
 
         return self.connector.recv_kv_caches_and_hidden_states(
-            model_executable, model_input, kv_caches)
+            model_executable, model_input, kv_caches, pd_pairs)

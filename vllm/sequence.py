@@ -893,6 +893,7 @@ class SequenceGroupMetadataDelta(
     computed_block_nums: Optional[List[int]] = None
     state: Optional[SequenceGroupState] = msgspec.field(
         default_factory=lambda: SequenceGroupState())
+    pd_pair: List[int] = [] # sc_pd
 
 
 class SequenceGroupMetadata(
@@ -953,6 +954,7 @@ class SequenceGroupMetadata(
     cross_block_table: Optional[List[int]] = None
     prompt_adapter_request: Optional[PromptAdapterRequest] = None
     token_chunk_size: Optional[int] = None
+    pd_pair: Optional[List[int]] = [] # sc_pd
 
     ### Stateful fields that are lazily defined. ###
     # The number of speculative tokens adopted in this request.
@@ -1006,6 +1008,7 @@ class SequenceGroupMetadata(
         self.token_chunk_size = sequence_group_metadata_delta.token_chunk_size
         self.do_sample = sequence_group_metadata_delta.do_sample
         self.is_prompt = sequence_group_metadata_delta.is_prompt
+        self.pd_pair = sequence_group_metadata_delta.pd_pair # sc_pd
 
     def finish_step(self) -> None:
         assert self.state is not None
