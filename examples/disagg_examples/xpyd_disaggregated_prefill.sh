@@ -47,7 +47,7 @@ CUDA_VISIBLE_DEVICES=0 vllm serve $MODEL_PATH \
     --max-model-len 4096 \
     --gpu-memory-utilization 0.8 \
     --kv-transfer-config \
-    '{"kv_connector":"PyNcclConnector","kv_role":"kv_producer","kv_rank":0,"kv_parallel_size":4,"producer_num":1,"consumer_num":3}' &
+    '{"kv_connector":"XpYdNcclConnector","kv_role":"kv_producer","kv_rank":0,"kv_parallel_size":4,"producer_num":1,"consumer_num":3}' &
 
 # decoding instance, which is the KV consumer
 CUDA_VISIBLE_DEVICES=1 vllm serve $MODEL_PATH \
@@ -55,21 +55,21 @@ CUDA_VISIBLE_DEVICES=1 vllm serve $MODEL_PATH \
     --max-model-len 4096 \
     --gpu-memory-utilization 0.8 \
     --kv-transfer-config \
-    '{"kv_connector":"PyNcclConnector","kv_role":"kv_consumer","kv_rank":1,"kv_parallel_size":4,"producer_num":1,"consumer_num":3}' &
+    '{"kv_connector":"XpYdNcclConnector","kv_role":"kv_consumer","kv_rank":1,"kv_parallel_size":4,"producer_num":1,"consumer_num":3}' &
 
-CUDA_VISIBLE_DEVICES=4 vllm serve $MODEL_PATH \
+CUDA_VISIBLE_DEVICES=3 vllm serve $MODEL_PATH \
     --port 8202 \
     --max-model-len 4096 \
     --gpu-memory-utilization 0.8 \
     --kv-transfer-config \
-    '{"kv_connector":"PyNcclConnector","kv_role":"kv_consumer","kv_rank":2,"kv_parallel_size":4,"producer_num":1,"consumer_num":3}' &
+    '{"kv_connector":"XpYdNcclConnector","kv_role":"kv_consumer","kv_rank":2,"kv_parallel_size":4,"producer_num":1,"consumer_num":3}' &
 
-CUDA_VISIBLE_DEVICES=5 vllm serve $MODEL_PATH \
+CUDA_VISIBLE_DEVICES=4 vllm serve $MODEL_PATH \
     --port 8203 \
     --max-model-len 4096 \
     --gpu-memory-utilization 0.8 \
     --kv-transfer-config \
-    '{"kv_connector":"PyNcclConnector","kv_role":"kv_consumer","kv_rank":3,"kv_parallel_size":4,"producer_num":1,"consumer_num":3}' &
+    '{"kv_connector":"XpYdNcclConnector","kv_role":"kv_consumer","kv_rank":3,"kv_parallel_size":4,"producer_num":1,"consumer_num":3}' &
 
 # wait until prefill and decode instances are ready
 wait_for_server 8101

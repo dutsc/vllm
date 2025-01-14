@@ -1704,6 +1704,8 @@ class ModelRunner(GPUModelRunnerBase[ModelInputForGPUWithSamplingMetadata]):
                     kv_caches=kv_caches,
                     pd_pairs=pd_pairs, # sc_pd
                 )
+            # when use gloo, maybe it will work
+            # hidden_or_intermediate_states = hidden_or_intermediate_states.cuda()
 
         multi_modal_kwargs = model_input.multi_modal_kwargs or {}
         seqlen_agnostic_kwargs = {
