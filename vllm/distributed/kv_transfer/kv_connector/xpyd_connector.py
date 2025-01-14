@@ -16,6 +16,8 @@ from vllm.config import VllmConfig
 from vllm.distributed.kv_transfer.kv_connector.base import KVConnectorBase
 from vllm.distributed.kv_transfer.kv_lookup_buffer.simple_buffer import (
     SimpleBuffer)
+from vllm.distributed.kv_transfer.kv_lookup_buffer.xpyd_buffer import (
+    XpYdBuffer)
 from vllm.logger import init_logger
 from vllm.sequence import IntermediateTensors
 
@@ -25,7 +27,7 @@ if TYPE_CHECKING:
 logger = init_logger(__name__)
 
 
-class SimpleConnector(KVConnectorBase):
+class XpYdConnector(KVConnectorBase):
 
     def __init__(
         self,
@@ -36,7 +38,7 @@ class SimpleConnector(KVConnectorBase):
 
         self.config = config.kv_transfer_config
 
-        if self.config.kv_connector == "PyNcclConnector":
+        if self.config.kv_connector in ["PyNcclConnector","XpYdNcclConnector"]:
             from vllm.distributed.kv_transfer.kv_pipe.pynccl_pipe import (
                 PyNcclPipe)
             logger.info(
@@ -61,8 +63,8 @@ class SimpleConnector(KVConnectorBase):
 
         self.lookup_buffer_size = self.config.kv_buffer_size
 
-        self.producer_buffer: Optional[SimpleBuffer] = None
-        self.consumer_buffer: Optional[SimpleBuffer] = None
+        self.producer_buffer: Union[SimpleBuffer, XpYdBuffer] = None
+        self.consumer_buffer: Union[SimpleBuffer, XpYdBuffer] = None
 
         self.producer_data_pipe: Union[PyNcclPipe, MooncakePipe]
         self.consumer_data_pipe: Union[PyNcclPipe, MooncakePipe]
@@ -76,7 +78,7 @@ class SimpleConnector(KVConnectorBase):
         # and the decode vLLM only uses recv pipe
         if self.config.is_kv_producer:
 
-            if self.config.kv_connector == "PyNcclConnector":
+            if self.config.kv_connector in ["PyNcclConnector","XpYdNcclConnector"]:
                 self.producer_data_pipe = PyNcclPipe(
                     local_rank=local_rank,
                     config=self.config,
@@ -96,7 +98,7 @@ class SimpleConnector(KVConnectorBase):
                 # We only need to initialize MooncakePipe once
                 self.producer_signal_pipe = self.producer_data_pipe
 
-            self.producer_buffer = SimpleBuffer(self.producer_signal_pipe,
+            self.producer_buffer = XpYdBuffer(self.producer_signal_pipe,
                                                 self.producer_data_pipe,
                                                 self.config.kv_buffer_size)
 
@@ -104,7 +106,7 @@ class SimpleConnector(KVConnectorBase):
 
             # the current vLLM instance is KV consumer, so it needs to connect
             # its recv pipe to the send pipe of KV producder
-            if self.config.kv_connector == "PyNcclConnector":
+            if self.config.kv_connector in ["PyNcclConnector","XpYdNcclConnector"]:
                 self.consumer_data_pipe = PyNcclPipe(
                     local_rank=local_rank,
                     config=self.config,
@@ -123,7 +125,7 @@ class SimpleConnector(KVConnectorBase):
                 )
                 self.consumer_signal_pipe = self.consumer_data_pipe
 
-            self.consumer_buffer = SimpleBuffer(
+            self.consumer_buffer = XpYdBuffer(
                 self.consumer_signal_pipe,
                 self.consumer_data_pipe,
                 self.config.kv_buffer_size,
