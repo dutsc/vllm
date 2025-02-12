@@ -2564,6 +2564,9 @@ class KVTransferConfig(BaseModel):
     
     # pd_sc
     zmq_ip: int = "127.0.0.1"
+    
+    # Make sure len(zmq_ports)>=producer_num, 
+    # because each zmq socket in the producer will be bound to a zmq_port.
     zmq_ports: List[int] = range(12300,12310,1)
     producer_num: int
     consumer_num: int

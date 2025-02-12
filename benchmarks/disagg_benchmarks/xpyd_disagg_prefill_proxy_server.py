@@ -7,13 +7,23 @@ AIOHTTP_TIMEOUT = aiohttp.ClientTimeout(total=6 * 60 * 60)
 
 app = Quart(__name__)
 
+# rank2port = {
+#     0:8101,
+#     1:8102,
+#     2:8201,
+#     3:8202,
+#     4:8203,
+# }
+
 rank2port = {
     0:8101,
     1:8201,
     2:8202,
     3:8203,
 }
-d_rank_counter = 1
+
+p_rank_counter = 0
+d_rank_counter = 0
 
 async def forward_request(url, data):
     async with aiohttp.ClientSession(timeout=AIOHTTP_TIMEOUT) as session:
@@ -38,13 +48,16 @@ async def handle_request():
     try:
         original_request_data = await request.get_json()
         global d_rank_counter
+        global p_rank_counter
         # pd_pair = original_request_data['pd_pair']
         # p_rank = pd_pair[0]
         # d_rank = pd_pair[1]
+        
+        # p_rank = p_rank_counter % 2
+        d_rank = d_rank_counter % 2 + 1
         p_rank = 0
-        # d_rank = 1
-        d_rank = d_rank_counter
-        d_rank_counter = (d_rank_counter % 3) + 1
+        p_rank_counter += 1 
+        d_rank_counter += 1 
         
         print(f"{datetime.now()} p_rank:{p_rank}, d_rank:{d_rank}")
         original_request_data['pd_pair'] = [p_rank, d_rank]

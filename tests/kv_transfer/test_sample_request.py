@@ -52,12 +52,15 @@ dataset_path="/share/dataset/ShareGPT52K/sg_90k_part1.json"
 model_path = "/share/models/Meta-Llama-3-8B-Instruct"
 tokenizer = get_tokenizer(model_path) 
 dataset = sample_sharegpt_requests(dataset_path=dataset_path,
-                                   num_requests=5,
+                                   num_requests=20000,
                                    tokenizer=tokenizer)
 
 input_lens = []
 output_lens = []
-for idx, req in enumerate(dataset):
-    print(f"idx:{idx}, input_len:{req[1]}, output_len:{req[2]}")
-    input_lens.append(req[1])
-    output_lens.append(req[2])
+
+# for idx, req in enumerate(dataset):
+#     print(f"idx:{idx}, input_len:{req[1]}, output_len:{req[2]}")
+#     input_lens.append(req[1])
+#     output_lens.append(req[2])
+
+print(len(dataset))
