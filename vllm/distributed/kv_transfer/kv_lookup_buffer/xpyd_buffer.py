@@ -58,31 +58,46 @@ class XpYdBuffer(KVLookupBufferBase):
         # self.d_rank_queue = queue.Queue() # 用于向request_handling_thread线程传递d_rank 
         if self.kv_role == "kv_producer":
             self.request_handling_threads: Optional[dict[threading.Thread]] = {}
-            self.socket = self.context.socket(zmq.PULL)
-            self.socket.bind(f"tcp://{self.zmq_ip}:{self.zmq_ports[0]}")
+            self.p_socket = self.context.socket(zmq.PULL)
+            self.p_socket.bind(f"tcp://{self.zmq_ip}:{self.zmq_ports[self.kv_rank]}")
             
             self.queues = {
-                self.hash_rank([0,1]):queue.Queue(),
-                self.hash_rank([0,2]):queue.Queue(),
-                self.hash_rank([0,3]):queue.Queue(),
+                self.hash_rank([self.kv_rank,x]):queue.Queue() 
+                for x in range(self.producer_num, self.producer_num + self.consumer_num)
             }
+            logger.info(f"[rank:{self.kv_rank}] self.queues={self.queues}")
             
             # 启动分发线程 和 处理线程
             self.request_distribute_thread: Optional[threading.Thread] = None
             self.request_distribute_thread = threading.Thread(target=self.drop_select_distribute)
             self.request_distribute_thread.start()
             
-            for pd_pair in [[0,1],[0,2],[0,3]]:
+            self.ppd_pair_list = [[self.kv_rank,x] for x in range(self.producer_num, self.producer_num + self.consumer_num)]
+            for pd_pair in self.ppd_pair_list:
                 thread_idx = self.hash_rank(pd_pair=pd_pair)
                 self.request_handling_threads[thread_idx] = threading.Thread(target=self.drop_select_handler,
                                                                              args=(pd_pair,))
                 self.request_handling_threads[thread_idx].start()
-            
+            logger.info(f"[rank:{self.kv_rank}] self.request_handling_threads={self.request_handling_threads}")
             
         elif self.kv_role == "kv_consumer":
-            self.socket = self.context.socket(zmq.PUSH)
-            logger.info(f"[rank:{self.kv_rank}] zmq_port={self.zmq_ports[0]}")
-            self.socket.connect(f"tcp://{self.zmq_ip}:{self.zmq_ports[0]}")
+            # self.d_sockets = {}
+            self.d_socket = None 
+            self.dpd_pair_list = [[x,self.kv_rank] for x in range(0,self.producer_num)]
+            for pd_pair in self.dpd_pair_list:
+                p_rank = pd_pair[0]
+                socket = self.context.socket(zmq.PUSH)
+                logger.info(f"[rank:{self.kv_rank}][pd_pair:{pd_pair}] zmq_port={self.zmq_ports[p_rank]}")
+                socket.connect(f"tcp://{self.zmq_ip}:{self.zmq_ports[p_rank]}")
+                socket_idx = self.hash_rank(pd_pair=pd_pair)
+                # self.d_sockets[socket_idx] = socket
+                self.d_socket = socket
+            # logger.info(f"[rank:{self.kv_rank}][self.d_sockets:{self.d_sockets}]")
+            logger.info(f"[rank:{self.kv_rank}][self.d_socket:{self.d_socket}]")
+            
+            # self.d_socket = self.context.socket(zmq.PUSH)
+            # logger.info(f"[rank:{self.kv_rank}] zmq_port={self.zmq_ports[0]}")
+            # self.d_socket.connect(f"tcp://{self.zmq_ip}:{self.zmq_ports[0]}")
 
         self.normal_signal = torch.tensor([0], device="cpu")
         self.end_signal = None
@@ -246,7 +261,7 @@ class XpYdBuffer(KVLookupBufferBase):
     def drop_select_distribute(self):
         try:
             while True:
-                pull_key = self.socket.recv_pyobj()
+                pull_key = self.p_socket.recv_pyobj()
                 pd_pair = pull_key.pd_pair
                 input_tokens = pull_key.input_tokens
 
@@ -269,10 +284,9 @@ class XpYdBuffer(KVLookupBufferBase):
 
         p_rank = pd_pair[0] # sc_pd
         # self.request_queues[self.hash_rank(pd_pair)].put(pd_pair)
-        # TODO send pd_pair
-        # self.socket.send_pyobj(pd_pair)
         pull_key = PullKey(pd_pair=pd_pair, input_tokens=input_tokens)
-        self.socket.send_pyobj(pull_key)
+        # self.d_sockets[self.hash_rank(pd_pair)].send_pyobj(pull_key)
+        self.d_socket.send_pyobj(pull_key)
         
         # self.signal_pipe.send_tensor(self.normal_signal,p_rank)
         # self.data_pipe.send_tensor(input_tokens,p_rank)
@@ -290,41 +304,6 @@ class XpYdBuffer(KVLookupBufferBase):
 
         return [input_tokens, roi, key, value, hidden]
     
-    def drop_select_zmq(
-        self, input_tokens: Optional[torch.Tensor],
-        roi: Optional[torch.Tensor], pd_pair: int) -> List[Optional[torch.Tensor]]:
-
-        assert self.request_handling_thread is None, \
-            "drop_select should be called by the KV cache consumer "\
-            "(e.g. the decode vLLM instance)"
-
-        if isinstance(input_tokens, torch.Tensor):
-            input_tokens = input_tokens.clone()
-        if isinstance(roi, torch.Tensor):
-            roi = roi.clone().float()
-
-        p_rank = pd_pair[0] # sc_pd
-        # self.request_queues[self.hash_rank(pd_pair)].put(pd_pair)
-        # TODO send pd_pair
-        self.socket.send_pyobj(pd_pair)
-        # 发送input_tokens
-        self.socket.send_pyobj(input_tokens)
-        
-        self.signal_pipe.send_tensor(self.normal_signal,p_rank)
-        self.data_pipe.send_tensor(input_tokens,p_rank)
-        # self.data_pipe.send_tensor(roi,p_rank)
-
-        input_tokens = self.data_pipe.recv_tensor(p_rank)
-        roi = self.data_pipe.recv_tensor(p_rank)
-        if roi is not None:
-            # convert from float tensor to bool tensor
-            # as PyNccl does not support sending bool tensor
-            roi = (roi > 0.5)
-        key = self.data_pipe.recv_tensor(p_rank)
-        value = self.data_pipe.recv_tensor(p_rank)
-        hidden = self.data_pipe.recv_tensor(p_rank)
-
-        return [input_tokens, roi, key, value, hidden]
 
     def full_handler(self):
         time.sleep(0.001)

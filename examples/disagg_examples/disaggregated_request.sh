@@ -6,7 +6,7 @@ output1=$(curl -X POST -s http://localhost:8006/v1/completions \
 "prompt": "San Francisco is a",
 "max_tokens": 10,
 "temperature": 0,
-"pd_pair": [0,1]
+"pd_pair": [0,2]
 }')
 
 echo ""

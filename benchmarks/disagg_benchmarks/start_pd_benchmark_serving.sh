@@ -2,8 +2,8 @@ results_folder="./results"
 model="/share/models/Meta-Llama-3-8B-Instruct"
 dataset_name="sharegpt"
 dataset_path="/share/dataset/ShareGPT52K/sg_90k_part1.json"
-num_prompts=200
-qps=20
+num_prompts=2000
+qps=10
 
 # for qps in $(seq 1 1 10); do
 python3 ../benchmark_serving.py \

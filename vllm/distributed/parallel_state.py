@@ -958,6 +958,9 @@ def init_distributed_environment(
             "distributed_init_method must be provided when initializing "
             "distributed environment")
         # this backend is used for WORLD
+        logger.info(f"backend = {backend}")
+        logger.info(f"distributed_init_method = {distributed_init_method}")
+        logger.info(f"world_size = {world_size}")
         torch.distributed.init_process_group(
             backend=backend,
             init_method=distributed_init_method,
