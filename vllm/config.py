@@ -2568,8 +2568,13 @@ class KVTransferConfig(BaseModel):
     # Make sure len(zmq_ports)>=producer_num, 
     # because each zmq socket in the producer will be bound to a zmq_port.
     zmq_ports: List[int] = range(12300,12310,1)
+    
     producer_num: int
     consumer_num: int
+    
+    # use for zmq ROUTER/DEALER mode
+    decoder_port: int = 12311
+    prefiller_port: int = 12312
 
     def compute_hash(self) -> str:
         """

@@ -1650,8 +1650,10 @@ class ModelRunner(GPUModelRunnerBase[ModelInputForGPUWithSamplingMetadata]):
         num_steps: int = 1,
     ) -> Optional[Union[List[SamplerOutput], IntermediateTensors]]:
         pd_pairs = model_input.pd_pairs
-        kv_rank = get_kv_transfer_group().config.kv_transfer_config.kv_rank
-        logger.info(f'[kv_rank:{kv_rank}] pd_pairs={pd_pairs}')
+        
+        # kv_rank = get_kv_transfer_group().config.kv_transfer_config.kv_rank
+        # logger.info(f'[kv_rank:{kv_rank}] pd_pairs={pd_pairs}')
+        
         # logger.info(f"pd_pairs = {pd_pairs}")
         if num_steps > 1:
             raise ValueError("num_steps > 1 is not supported in ModelRunner")
@@ -1738,7 +1740,7 @@ class ModelRunner(GPUModelRunnerBase[ModelInputForGPUWithSamplingMetadata]):
         # Sending KV cache in distributed KV cache transfer setting
         # NOTE: the send operation is non-blocking
         if self.need_send_kv(model_input, kv_caches):
-            logger.info(f"[kv_rank:{kv_rank}] need_send_kv")
+            # logger.info(f"[kv_rank:{kv_rank}] need_send_kv")
             get_kv_transfer_group().send_kv_caches_and_hidden_states(
                 # model_executable is used to know which layer the current
                 # worker is working on, so that we can send KV for only those

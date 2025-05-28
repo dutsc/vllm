@@ -183,8 +183,7 @@ class PyNcclPipe(KVPipeBase):
               being sent.
         """
         metadata = self._make_metadata(tensor)
-        logger.info(f"[kv_rank:{self.kv_rank}] _send_impl metadata = {metadata}")
-        logger.info(f"[kv_rank:{self.kv_rank}] _send_impl metadata dst_rank = {rank}")
+        logger.info(f"[kv_rank:{self.kv_rank}] _send_impl metadata = {metadata},dst_rank = {rank}")
         self._send_metadata(metadata, rank)
         logger.info(f"[kv_rank:{self.kv_rank}] _send_impl finish send metadata")
         if tensor is not None:
@@ -203,9 +202,9 @@ class PyNcclPipe(KVPipeBase):
         Returns:
             - buffer: The received tensor, or None if no tensor is received.
         """
-        logger.info(f"[kv_rank:{self.kv_rank}] _recv_impl metadata src_rank = {rank}")
+        logger.info(f"[kv_rank:{self.kv_rank}] _recv_impl metadata ")
         metadata = self._recv_metadata(rank)
-        logger.info(f"[kv_rank:{self.kv_rank}] _recv_impl metadata = {metadata}")
+        logger.info(f"[kv_rank:{self.kv_rank}][src_rank:{rank}] _recv_impl metadata = {metadata}")
         if metadata["dtype"] is None:
             logger.info(f"[kv_rank:{self.kv_rank}] _recv_impl recv None")
             return None
@@ -213,7 +212,6 @@ class PyNcclPipe(KVPipeBase):
         self.target_rank_for_recv = rank
         self.device_recv_func(buffer, self.target_rank_for_recv)
         # buffer = self.group.recv_obj(self.target_rank_for_recv)
-        # logger.info(f"[kv_rank:{self.kv_rank}] _recv_impl recv {buffer}")
         logger.info(f"[kv_rank:{self.kv_rank}] _recv_impl finished")
         return buffer
 

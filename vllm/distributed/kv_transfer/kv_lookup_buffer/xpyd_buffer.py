@@ -15,6 +15,7 @@ from typing import Deque, List, Optional, Union
 import queue
 import torch
 import zmq
+import pickle
 from vllm.distributed.kv_transfer.kv_lookup_buffer.base import (
     KVLookupBufferBase)
 from vllm.distributed.kv_transfer.kv_pipe.base import KVPipeBase
@@ -49,20 +50,68 @@ class XpYdBuffer(KVLookupBufferBase):
         
         self.kv_rank = self.data_pipe.kv_rank
         self.kv_role = self.data_pipe.config.kv_role
+        
         self.zmq_ports = self.data_pipe.config.zmq_ports
         self.zmq_ip = self.data_pipe.config.zmq_ip
+        
+        self.decoder_port = self.data_pipe.config.decoder_port
+        self.prefiller_port = self.data_pipe.config.prefiller_port
+        
         self.producer_num = self.data_pipe.config.producer_num
         self.consumer_num = self.data_pipe.config.consumer_num
         self.context = zmq.Context()
         
         # self.d_rank_queue = queue.Queue() # 用于向request_handling_thread线程传递d_rank 
+        # if self.kv_role == "kv_producer":
+        #     self.request_handling_threads: Optional[dict[threading.Thread]] = {}
+        #     self.p_socket = self.context.socket(zmq.PULL)
+        #     self.p_socket.bind(f"tcp://{self.zmq_ip}:{self.zmq_ports[self.kv_rank]}")
+            
+        #     self.queues = {
+        #         self.hash_rank([self.kv_rank,x]):queue.Queue() 
+        #         for x in range(self.producer_num, self.producer_num + self.consumer_num)
+        #     }
+        #     logger.info(f"[rank:{self.kv_rank}] self.queues={self.queues}")
+            
+        #     # 启动分发线程 和 处理线程
+        #     self.request_distribute_thread: Optional[threading.Thread] = None
+        #     self.request_distribute_thread = threading.Thread(target=self.drop_select_distribute)
+        #     self.request_distribute_thread.start()
+            
+        #     self.ppd_pair_list = [[self.kv_rank,x] for x in range(self.producer_num, self.producer_num + self.consumer_num)]
+        #     for pd_pair in self.ppd_pair_list:
+        #         thread_idx = self.hash_rank(pd_pair=pd_pair)
+        #         self.request_handling_threads[thread_idx] = threading.Thread(target=self.drop_select_handler,
+        #                                                                      args=(pd_pair,))
+        #         self.request_handling_threads[thread_idx].start()
+        #     logger.info(f"[rank:{self.kv_rank}] self.request_handling_threads={self.request_handling_threads}")
+            
+        # elif self.kv_role == "kv_consumer":
+        #     # self.d_sockets = {}
+        #     self.d_socket = None 
+        #     self.dpd_pair_list = [[x,self.kv_rank] for x in range(0,self.producer_num)]
+        #     for pd_pair in self.dpd_pair_list:
+        #         p_rank = pd_pair[0]
+        #         socket = self.context.socket(zmq.PUSH)
+        #         logger.info(f"[rank:{self.kv_rank}][pd_pair:{pd_pair}] zmq_port={self.zmq_ports[p_rank]}")
+        #         socket.connect(f"tcp://{self.zmq_ip}:{self.zmq_ports[p_rank]}")
+        #         socket_idx = self.hash_rank(pd_pair=pd_pair)
+        #         # self.d_sockets[socket_idx] = socket
+        #         self.d_socket = socket
+        #     # logger.info(f"[rank:{self.kv_rank}][self.d_sockets:{self.d_sockets}]")
+        #     logger.info(f"[rank:{self.kv_rank}][self.d_socket:{self.d_socket}]")
+            
         if self.kv_role == "kv_producer":
             self.request_handling_threads: Optional[dict[threading.Thread]] = {}
-            self.p_socket = self.context.socket(zmq.PULL)
-            self.p_socket.bind(f"tcp://{self.zmq_ip}:{self.zmq_ports[self.kv_rank]}")
             
+            # init zmq socket with ROUTER/DEALER mode 
+            self.p_socket = self.context.socket(zmq.DEALER)
+            self.p_socket.setsockopt(zmq.IDENTITY, f"P-{self.kv_rank}".encode())
+            self.p_socket.connect(f"tcp://localhost:{self.prefiller_port}")
+            
+            # 注意这里的hash_rank 是字符串！！ 需要转化成int
             self.queues = {
-                self.hash_rank([self.kv_rank,x]):queue.Queue() 
+                int(self.hash_rank([self.kv_rank,x])):queue.Queue() 
                 for x in range(self.producer_num, self.producer_num + self.consumer_num)
             }
             logger.info(f"[rank:{self.kv_rank}] self.queues={self.queues}")
@@ -81,23 +130,10 @@ class XpYdBuffer(KVLookupBufferBase):
             logger.info(f"[rank:{self.kv_rank}] self.request_handling_threads={self.request_handling_threads}")
             
         elif self.kv_role == "kv_consumer":
-            # self.d_sockets = {}
-            self.d_socket = None 
-            self.dpd_pair_list = [[x,self.kv_rank] for x in range(0,self.producer_num)]
-            for pd_pair in self.dpd_pair_list:
-                p_rank = pd_pair[0]
-                socket = self.context.socket(zmq.PUSH)
-                logger.info(f"[rank:{self.kv_rank}][pd_pair:{pd_pair}] zmq_port={self.zmq_ports[p_rank]}")
-                socket.connect(f"tcp://{self.zmq_ip}:{self.zmq_ports[p_rank]}")
-                socket_idx = self.hash_rank(pd_pair=pd_pair)
-                # self.d_sockets[socket_idx] = socket
-                self.d_socket = socket
-            # logger.info(f"[rank:{self.kv_rank}][self.d_sockets:{self.d_sockets}]")
-            logger.info(f"[rank:{self.kv_rank}][self.d_socket:{self.d_socket}]")
-            
-            # self.d_socket = self.context.socket(zmq.PUSH)
-            # logger.info(f"[rank:{self.kv_rank}] zmq_port={self.zmq_ports[0]}")
-            # self.d_socket.connect(f"tcp://{self.zmq_ip}:{self.zmq_ports[0]}")
+            # init zmq socket with ROUTER/DEALER mode  
+            self.d_socket = self.context.socket(zmq.DEALER)
+            self.d_socket.setsockopt(zmq.IDENTITY, f"D-{self.kv_rank}".encode())
+            self.d_socket.connect(f"tcp://localhost:{self.decoder_port}")
 
         self.normal_signal = torch.tensor([0], device="cpu")
         self.end_signal = None
@@ -222,7 +258,9 @@ class XpYdBuffer(KVLookupBufferBase):
         try:
             while True:
                 input_tokens = self.queues[queue_idx].get()
-                logger.info(f"[kv_rank:{self.kv_rank}][pd_pair:{pd_pair}]  recv input_tokens={input_tokens}")
+                logger.info(f"[kv_rank:{self.kv_rank}][pd_pair:{pd_pair}][handler]  recv input_tokens={input_tokens}")
+                
+                
                 # logger.info(f"[kv_rank:{self.kv_rank}][pd_pair:{pd_pair}]  recv roi={roi}")
                 
                 # assert roi is not None, "Please provide the roi when sending "\
@@ -261,12 +299,20 @@ class XpYdBuffer(KVLookupBufferBase):
     def drop_select_distribute(self):
         try:
             while True:
-                pull_key = self.p_socket.recv_pyobj()
+                # ROUTER/DEALER mode
+                message = self.p_socket.recv()
+                pull_key = pickle.loads(message)
+                
+                # PULL/PUSH mode 
+                # pull_key = self.p_socket.recv_pyobj()
+                
                 pd_pair = pull_key.pd_pair
                 input_tokens = pull_key.input_tokens
+                logger.info(f"[rank:{self.kv_rank}][distributor] pd_pair:{pd_pair}")
 
-                # 分发到不同的request_handle_thread处理
+                # 每个不同的D发来的请求 分发到不同的request_handle_thread处理
                 request_handle_idx = self.hash_rank(pd_pair=pd_pair)
+                logger.info(f"[rank:{self.kv_rank}] self.queues: {self.queues}")
                 self.queues[request_handle_idx].put(input_tokens)
         except RuntimeError as e:
             if 'Connection closed by peer' not in str(e):
@@ -286,7 +332,13 @@ class XpYdBuffer(KVLookupBufferBase):
         # self.request_queues[self.hash_rank(pd_pair)].put(pd_pair)
         pull_key = PullKey(pd_pair=pd_pair, input_tokens=input_tokens)
         # self.d_sockets[self.hash_rank(pd_pair)].send_pyobj(pull_key)
-        self.d_socket.send_pyobj(pull_key)
+        
+        # ROUTER/DEALER mode
+        serialized_pull_key = pickle.dumps(pull_key)
+        self.d_socket.send(serialized_pull_key)
+        
+        # PULL/PUSH mode
+        # self.d_socket.send_pyobj(pull_key)
         
         # self.signal_pipe.send_tensor(self.normal_signal,p_rank)
         # self.data_pipe.send_tensor(input_tokens,p_rank)
@@ -311,36 +363,6 @@ class XpYdBuffer(KVLookupBufferBase):
     def insert(self, input_tokens: torch.Tensor, roi: torch.Tensor,
                key: torch.Tensor, value: torch.Tensor,
                hidden: torch.Tensor, pd_pair: int) -> None:
-
-        if self.buffer_size > self.buffer_size_threshold:
-            # log outside the while loop to avoid this message being logged
-            # repeatedly.
-            logger.debug("KV transfer buffer is full. Handling...")
-        while self.buffer_size > self.buffer_size_threshold:
-            self.full_handler()
-
-        self._add_to_buffer(input_tokens, roi, key, value, hidden)
-        
-        # when calling the insert, the current process is a sender
-        # need to launch the request handler and start listening to request.
-        # if self.request_handling_thread is None:
-        #     self.request_handling_thread = threading.Thread(
-        #         target=self.drop_select_handler)
-        #     self.request_handling_thread.start()
-        
-        # sc_pd
-        # self.d_rank_queue.put(d_rank)
-        # if self.hash_rank(pd_pair) not in self.request_queues:    
-        #     self.request_queues[self.hash_rank(pd_pair)] = queue.Queue()
-        if self.hash_rank(pd_pair) not in self.request_handling_threads:
-            thread = threading.Thread(target=self.drop_select_handler,args=(pd_pair,))
-            thread.start()
-            self.request_handling_threads[self.hash_rank(pd_pair)] = thread
-        # self.request_queues[self.hash_rank(pd_pair)].put(pd_pair)
-        
-    def insert_zmq(self, input_tokens: torch.Tensor, roi: torch.Tensor,
-            key: torch.Tensor, value: torch.Tensor,
-            hidden: torch.Tensor, pd_pair: int) -> None:
 
         if self.buffer_size > self.buffer_size_threshold:
             # log outside the while loop to avoid this message being logged

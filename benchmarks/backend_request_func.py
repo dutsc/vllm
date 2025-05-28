@@ -266,7 +266,6 @@ async def async_request_openai_completions(
                         chunk_bytes = chunk_bytes.strip()
                         if not chunk_bytes:
                             continue
-
                         chunk = chunk_bytes.decode("utf-8").removeprefix(
                             "data: ")
                         if chunk == "[DONE]":
@@ -299,6 +298,7 @@ async def async_request_openai_completions(
                         output.error = (
                             "Never received a valid chunk to calculate TTFT."
                             "This response will be marked as failed!")
+                    # print(f"{response.content}")
                     output.generated_text = generated_text
                     output.latency = latency
                 else:

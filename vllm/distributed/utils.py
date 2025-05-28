@@ -3,6 +3,7 @@
 # https://github.com/NVIDIA/Megatron-LM/blob/main/megatron/core/tensor_parallel/utils.py
 # Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
 import dataclasses
+from dataclasses import field
 import pickle
 import time
 from collections import deque
@@ -10,7 +11,7 @@ from typing import Any, Deque, Dict, Optional, Sequence, Tuple
 
 import torch
 from torch.distributed import TCPStore
-
+import threading
 import vllm.envs as envs
 from vllm.logger import init_logger
 
@@ -113,7 +114,8 @@ class StatelessProcessGroup:
     # A deque to store the data entries, with key and timestamp.
     entries: Deque[Tuple[str,
                          float]] = dataclasses.field(default_factory=deque)
-
+    lock: threading.Lock = field(init=False)
+    
     def __post_init__(self):
         assert self.rank < self.world_size
         self.send_dst_counter = {i: 0 for i in range(self.world_size)}
@@ -122,15 +124,18 @@ class StatelessProcessGroup:
             i: 0
             for i in range(self.world_size)
         }
-
+        self.lock = threading.Lock()
+        
+        
     def send_obj(self, obj: Any, dst: int):
         """Send an object to a destination rank."""
-        self.expire_data()
-        key = f"send_to/{dst}/{self.send_dst_counter[dst]}"
-        logger.info(f"[rank:{self.rank}] key={key}")
-        self.store.set(key, pickle.dumps(obj))
-        self.send_dst_counter[dst] += 1
-        self.entries.append((key, time.time()))
+        with self.lock:
+            self.expire_data()
+            key = f"send_to/{dst}/{self.rank}/{self.send_dst_counter[dst]}"
+            logger.info(f"[rank:{self.rank}] key={key}")
+            self.store.set(key, pickle.dumps(obj))
+            self.send_dst_counter[dst] += 1
+            self.entries.append((key, time.time()))
 
     def expire_data(self):
         """Expire data that is older than `data_expiration_seconds` seconds."""
@@ -145,12 +150,24 @@ class StatelessProcessGroup:
 
     def recv_obj(self, src: int) -> Any:
         """Receive an object from a source rank."""
-        key = f"send_to/{self.rank}/{self.recv_src_counter[src]}"
-        logger.info(f"[rank:{self.rank}] recv_obj key={key}")
-        obj = pickle.loads(
-            self.store.get(key))
-        self.recv_src_counter[src] += 1
-        return obj
+        with self.lock:
+            key = f"send_to/{self.rank}/{src}/{self.recv_src_counter[src]}"
+            logger.info(f"[rank:{self.rank}] recv_obj key={key}")
+            
+            max_retries = 5
+            for _ in range(max_retries):
+                try:
+                    data = self.store.get(key)
+                    obj = pickle.loads(data)
+                    self.recv_src_counter[src] += 1
+                    return obj
+                except KeyError:
+                    time.sleep(0.1)  # 等待数据到达
+            raise TimeoutError(f"接收超时: 从rank {src} 获取 {key} 失败")
+            # obj = pickle.loads(
+            #     self.store.get(key))
+            # self.recv_src_counter[src] += 1
+            # return obj
 
     def broadcast_obj(self, obj: Optional[Any], src: int) -> Any:
         """Broadcast an object from a source rank to all other ranks.

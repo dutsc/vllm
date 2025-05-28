@@ -85,6 +85,22 @@ class BenchmarkMetrics:
     std_e2el_ms: float
     percentiles_e2el_ms: List[Tuple[float, float]]
 
+def sample_replicated_data_requests(
+    dataset_path: str,
+    num_requests: int,
+    tokenizer: PreTrainedTokenizerBase,
+) -> List[Tuple[str, int, int, None]]:
+    with open(dataset_path, encoding='utf-8') as f:
+        data = json.load(f)
+        
+    filtered_dataset = []
+    for idx in range(num_requests):
+        item = data[idx]
+        prompt = item["prompt"]
+        input_len = item["input_len"]
+        output_len = item["output_len"]
+        filtered_dataset.append((prompt, input_len, output_len, None))
+    return filtered_dataset
 
 def sample_sharegpt_requests(
     dataset_path: str,
@@ -546,30 +562,31 @@ async def benchmark(
         raise ValueError(f"Unknown backend: {backend}")
 
     print("Starting initial single prompt test run...")
+    # print(f"{input_requests[0]}")
     test_prompt, test_prompt_len, test_output_len, test_mm_content = (
         input_requests[0])
     if backend != "openai-chat" and test_mm_content is not None:
         # multi-modal benchmark is only available on OpenAI Chat backend.
         raise ValueError(
             "Multi-modal content is only supported on 'openai-chat' backend.")
-    # test_input = RequestFuncInput(
-    #     model=model_id,
-    #     prompt=test_prompt,
-    #     api_url=api_url,
-    #     prompt_len=test_prompt_len,
-    #     output_len=test_output_len,
-    #     logprobs=logprobs,
-    #     best_of=best_of,
-    #     multi_modal_content=test_mm_content,
-    #     ignore_eos=ignore_eos,
-    # )
-    # test_output = await request_func(request_func_input=test_input)
-    # if not test_output.success:
-    #     raise ValueError(
-    #         "Initial test run failed - Please make sure benchmark arguments "
-    #         f"are correctly specified. Error: {test_output.error}")
-    # else:
-    #     print("Initial test run completed. Starting main benchmark run...")
+    test_input = RequestFuncInput(
+        model=model_id,
+        prompt=test_prompt,
+        api_url=api_url,
+        prompt_len=test_prompt_len,
+        output_len=test_output_len,
+        logprobs=logprobs,
+        best_of=best_of,
+        multi_modal_content=test_mm_content,
+        ignore_eos=ignore_eos,
+    )
+    test_output = await request_func(request_func_input=test_input)
+    if not test_output.success:
+        raise ValueError(
+            "Initial test run failed - Please make sure benchmark arguments "
+            f"are correctly specified. Error: {test_output.error}")
+    else:
+        print("Initial test run completed. Starting main benchmark run...")
 
     if profile:
         print("Starting profiler...")
@@ -815,6 +832,12 @@ def main(args: argparse.Namespace):
             tokenizer=tokenizer,
             fixed_output_len=args.sharegpt_output_len,
         )
+    elif args.dataset_name == "replicated_data":
+        input_requests = sample_replicated_data_requests(
+            dataset_path=args.dataset_path,
+            num_requests=args.num_prompts,
+            tokenizer=tokenizer,
+        )
 
     elif args.dataset_name == "sonnet":
         # Do not format the prompt, pass to message directly
@@ -975,7 +998,7 @@ if __name__ == "__main__":
         "--dataset-name",
         type=str,
         default="sharegpt",
-        choices=["sharegpt", "sonnet", "random", "hf"],
+        choices=["sharegpt", "sonnet", "random", "hf", "replicated_data"],
         help="Name of the dataset to benchmark on.",
     )
     parser.add_argument("--dataset-path",

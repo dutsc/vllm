@@ -7,23 +7,21 @@ AIOHTTP_TIMEOUT = aiohttp.ClientTimeout(total=6 * 60 * 60)
 
 app = Quart(__name__)
 
-# rank2port = {
-#     0:8101,
-#     1:8102,
-#     2:8201,
-#     3:8202,
-#     4:8203,
-# }
-
 rank2port = {
     0:8101,
-    1:8201,
-    2:8202,
-    3:8203,
+    1:8102,
+    2:8103,
+    3:8104,
+    4:8201,
+    5:8202,
 }
 
-p_rank_counter = 0
-d_rank_counter = 0
+# rank2port = {
+#     0:8101,
+#     1:8201,
+#     2:8202,
+#     3:8203,
+# }
 
 async def forward_request(url, data):
     async with aiohttp.ClientSession(timeout=AIOHTTP_TIMEOUT) as session:
@@ -42,6 +40,8 @@ async def forward_request(url, data):
                     content = await response.read()
                     yield content
 
+p_rank_counter = 0
+d_rank_counter = 0
 
 @app.route('/v1/completions', methods=['POST'])
 async def handle_request():
@@ -53,9 +53,10 @@ async def handle_request():
         # p_rank = pd_pair[0]
         # d_rank = pd_pair[1]
         
-        # p_rank = p_rank_counter % 2
-        d_rank = d_rank_counter % 2 + 1
-        p_rank = 0
+        p_rank = p_rank_counter % 4
+        d_rank = d_rank_counter % 2 + 4
+        # p_rank = 0
+        # d_rank = 5
         p_rank_counter += 1 
         d_rank_counter += 1 
         
