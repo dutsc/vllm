@@ -48,28 +48,28 @@ CUDA_VISIBLE_DEVICES=0 vllm serve $MODEL_PATH \
     --max-model-len 16384 \
     --gpu-memory-utilization 0.8 \
     --kv-transfer-config \
-    '{"kv_connector":"XpYdNcclConnector","kv_role":"kv_producer","kv_rank":0,"kv_parallel_size":6,"producer_num":4,"consumer_num":2}' &
+    '{"kv_connector":"XpYdNcclConnector","kv_role":"kv_producer","kv_rank":0,"kv_parallel_size":6,"producer_num":2,"consumer_num":4}' &
 
 CUDA_VISIBLE_DEVICES=1 vllm serve $MODEL_PATH \
     --port 8102 \
     --max-model-len 16384 \
     --gpu-memory-utilization 0.8 \
     --kv-transfer-config \
-    '{"kv_connector":"XpYdNcclConnector","kv_role":"kv_producer","kv_rank":1,"kv_parallel_size":6,"producer_num":4,"consumer_num":2}' &
+    '{"kv_connector":"XpYdNcclConnector","kv_role":"kv_producer","kv_rank":1,"kv_parallel_size":6,"producer_num":2,"consumer_num":4}' &
 
-CUDA_VISIBLE_DEVICES=2 vllm serve $MODEL_PATH \
-    --port 8103 \
-    --max-model-len 16384 \
-    --gpu-memory-utilization 0.8 \
-    --kv-transfer-config \
-    '{"kv_connector":"XpYdNcclConnector","kv_role":"kv_producer","kv_rank":2,"kv_parallel_size":6,"producer_num":4,"consumer_num":2}' &
+# CUDA_VISIBLE_DEVICES=2 vllm serve $MODEL_PATH \
+#     --port 8103 \
+#     --max-model-len 16384 \
+#     --gpu-memory-utilization 0.8 \
+#     --kv-transfer-config \
+#     '{"kv_connector":"XpYdNcclConnector","kv_role":"kv_producer","kv_rank":2,"kv_parallel_size":6,"producer_num":4,"consumer_num":2}' &
 
-CUDA_VISIBLE_DEVICES=3 vllm serve $MODEL_PATH \
-    --port 8104 \
-    --max-model-len 16384 \
-    --gpu-memory-utilization 0.8 \
-    --kv-transfer-config \
-    '{"kv_connector":"XpYdNcclConnector","kv_role":"kv_producer","kv_rank":3,"kv_parallel_size":6,"producer_num":4,"consumer_num":2}' &
+# CUDA_VISIBLE_DEVICES=3 vllm serve $MODEL_PATH \
+#     --port 8104 \
+#     --max-model-len 16384 \
+#     --gpu-memory-utilization 0.8 \
+#     --kv-transfer-config \
+#     '{"kv_connector":"XpYdNcclConnector","kv_role":"kv_producer","kv_rank":3,"kv_parallel_size":6,"producer_num":4,"consumer_num":2}' &
 
 # CUDA_VISIBLE_DEVICES=4 vllm serve $MODEL_PATH \
 #     --port 8105 \
@@ -81,29 +81,45 @@ CUDA_VISIBLE_DEVICES=3 vllm serve $MODEL_PATH \
 
 # decoding instance, which is the KV consumer
 
-CUDA_VISIBLE_DEVICES=4 vllm serve $MODEL_PATH \
+CUDA_VISIBLE_DEVICES=2 vllm serve $MODEL_PATH \
     --port 8201 \
     --max-model-len 16384 \
     --gpu-memory-utilization 0.8 \
     --kv-transfer-config \
-    '{"kv_connector":"XpYdNcclConnector","kv_role":"kv_consumer","kv_rank":4,"kv_parallel_size":6,"producer_num":4,"consumer_num":2}' &
+    '{"kv_connector":"XpYdNcclConnector","kv_role":"kv_consumer","kv_rank":2,"kv_parallel_size":6,"producer_num":2,"consumer_num":4}' &
 
-CUDA_VISIBLE_DEVICES=5 vllm serve $MODEL_PATH \
+CUDA_VISIBLE_DEVICES=3 vllm serve $MODEL_PATH \
     --port 8202 \
     --max-model-len 4096 \
     --gpu-memory-utilization 0.8 \
     --kv-transfer-config \
-    '{"kv_connector":"XpYdNcclConnector","kv_role":"kv_consumer","kv_rank":5,"kv_parallel_size":6,"producer_num":4,"consumer_num":2}' &
+    '{"kv_connector":"XpYdNcclConnector","kv_role":"kv_consumer","kv_rank":3,"kv_parallel_size":6,"producer_num":2,"consumer_num":4}' &
+
+
+CUDA_VISIBLE_DEVICES=4 vllm serve $MODEL_PATH \
+    --port 8203 \
+    --max-model-len 16384 \
+    --gpu-memory-utilization 0.8 \
+    --kv-transfer-config \
+    '{"kv_connector":"XpYdNcclConnector","kv_role":"kv_consumer","kv_rank":4,"kv_parallel_size":6,"producer_num":2,"consumer_num":4}' &
+
+CUDA_VISIBLE_DEVICES=5 vllm serve $MODEL_PATH \
+    --port 8204 \
+    --max-model-len 4096 \
+    --gpu-memory-utilization 0.8 \
+    --kv-transfer-config \
+    '{"kv_connector":"XpYdNcclConnector","kv_role":"kv_consumer","kv_rank":5,"kv_parallel_size":6,"producer_num":2,"consumer_num":4}' &
 
 # wait until prefill and decode instances are ready
 wait_for_server 8101
 wait_for_server 8102
-wait_for_server 8103
-wait_for_server 8104
+# wait_for_server 8103
+# wait_for_server 8104
 # wait_for_server 8105
 wait_for_server 8201
 wait_for_server 8202
-# wait_for_server 8203
+wait_for_server 8203
+wait_for_server 8204
 
 # launch a proxy server that opens the service at port 8000
 # the workflow of this proxy:

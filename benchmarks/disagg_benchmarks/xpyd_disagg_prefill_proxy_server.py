@@ -10,10 +10,10 @@ app = Quart(__name__)
 rank2port = {
     0:8101,
     1:8102,
-    2:8103,
-    3:8104,
-    4:8201,
-    5:8202,
+    2:8201,
+    3:8202,
+    4:8203,
+    5:8204,
 }
 
 # rank2port = {
@@ -53,8 +53,8 @@ async def handle_request():
         # p_rank = pd_pair[0]
         # d_rank = pd_pair[1]
         
-        p_rank = p_rank_counter % 4
-        d_rank = d_rank_counter % 2 + 4
+        p_rank = p_rank_counter % 2
+        d_rank = d_rank_counter % 4 + 2
         # p_rank = 0
         # d_rank = 5
         p_rank_counter += 1 
